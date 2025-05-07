@@ -10,6 +10,10 @@ const breadcrumbs: BreadcrumbItem[] = [
         href: '/dashboard',
     },
 ];
+const props = defineProps({
+    created : { type: Object, required: true },
+    joined : { type: Object, required: true },
+});
 </script>
 
 <template>
