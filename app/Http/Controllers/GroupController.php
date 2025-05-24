@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Group;
+use App\Models\GroupParticipant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -14,7 +15,7 @@ class GroupController extends Controller
       {
           $user = Auth::user();
   
-          $created = Group::where('created_by', $user->id)->get();
+          $created = Group::where('created_by', $user->id)->withCount('participants')->get();
           $joined = Group::whereIn('id', $user->groupParticipations()->pluck('group_id'))->get();
   
           return Inertia::render('Dashboard', [
@@ -33,7 +34,7 @@ class GroupController extends Controller
           $request->validate([
               'name' => 'required|string|max:255',
               'description' => 'nullable|string',
-              'periodicity' => 'required|string|in:monthly,weekly,custom',
+              'periodicity' => 'required|string|in:monthly,bi-weekly,weekly,custom',
           ]);
   
           $group = Group::create([

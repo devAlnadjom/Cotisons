@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Policies\GroupPolicy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -10,6 +11,10 @@ class Group extends Model
     use SoftDeletes;
 
     protected $fillable = ['name', 'description', 'created_by', 'periodicity'];
+    
+    protected $policies = [
+        'update' => GroupPolicy::class
+    ];
 
     public function creator()
     {
