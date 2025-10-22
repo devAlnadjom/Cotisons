@@ -112,7 +112,13 @@ class GroupController extends Controller
       {
           $this->authorize('view', $group);
 
-          $group->load(['creator:id,name', 'participants.user:id,name', 'cotisations.user:id,name' => fn($q) => $q->latest('date_versement')->take(20)]);
+          $group->load([
+              'creator:id,name',
+              'participants.user:id,name',
+              'cotisations' => function($q) {
+                  $q->with('participant:id,name')->latest('date_versement')->take(20);
+              },
+          ]);
 
           return Inertia::render('Groups/Show', [
               'group' => [
@@ -132,7 +138,8 @@ class GroupController extends Controller
                       'id' => $c->id,
                       'montant' => $c->montant,
                       'date_versement' => $c->date_versement,
-                      'user' => $c->user ? ['id' => $c->user->id, 'name' => $c->user->name] : null,
+                      // expose participant under `user` key for frontend compatibility
+                      'user' => $c->participant ? ['id' => $c->participant->id, 'name' => $c->participant->name] : null,
                   ])->values(),
               ],
           ]);
@@ -146,6 +153,7 @@ class GroupController extends Controller
         $request->validate([
             'montant' => 'required|numeric',
             'date_versement' => 'nullable|date',
+            
         ]);
 
         $cot = \App\Models\Cotisation::create([
