@@ -33,6 +33,9 @@ Route::middleware('auth')->group(function () {
     // Envoie une invitation à un email donné
     Route::post('/groups/{group}/invite', [GroupInvitationController::class, 'invite'])
         ->name('groups.invite');;
+    // Ajouter une cotisation pour un groupe
+    Route::post('/groups/{group}/cotisations', [GroupController::class, 'storeCotisation'])
+        ->name('groups.cotisations.store');
     
     Route::resource('groups', GroupController::class);
 });

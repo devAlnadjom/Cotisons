@@ -27,9 +27,9 @@ const page = usePage<SharedData>();
 const user = page.props.auth.user as User;
 
 const form = useForm({
-   name: null,
-   description: null,
-   periodicity: null,
+    name: '',
+    description: '',
+    periodicity: '',
 });
 
 const submit = () => {
@@ -55,23 +55,21 @@ const submit = () => {
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="email">Email address</Label>
-                        <Input
-                            id="email"
-                            type="text"
-                            class="mt-1 block w-full"
+                        <Label for="description">Description</Label>
+                        <textarea
+                            id="description"
+                            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                             v-model="form.description"
-                            required
-                            autocomplete="username"
-                            placeholder="Description de votre groupe" 
-                        />
+                            rows="4"
+                            placeholder="Description de votre groupe (objectifs, règles, etc.)"
+                        ></textarea>
                         <InputError class="mt-2" :message="form.errors.description" />
                     </div>
                     <div class="grid gap-2">
                         <h3 class="mb-5 text-lg font-medium text-gray-900 dark:text-white">How much do you expect to use each month?</h3>
                         <ul class="grid w-full gap-6 md:grid-cols-3">
                             <li>
-                                <input type="radio" id="periodicity-weekly" name="periodity" v-model="form.periodicity" value="weekly" class="hidden peer" required />
+                                <input type="radio" id="periodicity-weekly" name="periodicity" v-model="form.periodicity" value="weekly" class="hidden peer" required />
                                 <label for="periodicity-weekly" class="inline-flex items-center justify-between w-full p-5 text-gray-500 bg-white border border-gray-200 rounded-lg cursor-pointer dark:hover:text-gray-300 dark:border-gray-700 dark:peer-checked:text-gray-500 peer-checked:border-gray-600 dark:peer-checked:border-gray-600 peer-checked:text-gray-600 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700">                           
                                     <div class="block">
                                         <div class="w-full  font-semibold">Hebdomadaire</div>
@@ -83,7 +81,7 @@ const submit = () => {
                                 </label>
                             </li>
                             <li>
-                                <input type="radio" id="periodicity-bi-weekly" name="periodity" v-model="form.periodicity" value="bi-weekly" class="hidden peer" required />
+                                <input type="radio" id="periodicity-bi-weekly" name="periodicity" v-model="form.periodicity" value="bi-weekly" class="hidden peer" required />
                                 <label for="periodicity-bi-weekly" class="inline-flex items-center justify-between w-full p-5 text-gray-500 bg-white border border-gray-200 rounded-lg cursor-pointer dark:hover:text-gray-300 dark:border-gray-700 dark:peer-checked:text-gray-500 peer-checked:border-gray-600 dark:peer-checked:border-gray-600 peer-checked:text-gray-600 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700">                           
                                     <div class="block">
                                         <div class="w-full font-semibold">Bi-Hebdomadaire</div>
@@ -95,7 +93,7 @@ const submit = () => {
                                 </label>
                             </li>
                             <li>
-                                <input type="radio" id="periodicity-monthly" name="periodity" v-model="form.periodicity" value="monthly" class="hidden peer" required />
+                                <input type="radio" id="periodicity-monthly" name="periodicity" v-model="form.periodicity" value="monthly" class="hidden peer" required />
                                 <label for="periodicity-monthly" class="inline-flex items-center justify-between w-full p-5 text-gray-500 bg-white border border-gray-200 rounded-lg cursor-pointer dark:hover:text-gray-300 dark:border-gray-700 dark:peer-checked:text-gray-500 peer-checked:border-gray-600 dark:peer-checked:border-gray-600 peer-checked:text-gray-600 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700">                           
                                     <div class="block">
                                         <div class="w-full  font-semibold">Mensuel</div>
