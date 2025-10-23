@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cotisation;
 use App\Models\Group;
 use App\Models\GroupParticipant;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class GroupController extends Controller
@@ -116,9 +118,36 @@ class GroupController extends Controller
               'creator:id,name',
               'participants.user:id,name',
               'cotisations' => function($q) {
-                  $q->with('participant:id,name')->latest('date_versement')->take(20);
+                  $q->with('participant:id,name')->orderByDesc('date_versement')->take(20);
               },
           ]);
+
+          $authUser = Auth::user();
+
+          $participants = $group->participants->map(fn($p) => [
+              'id' => $p->id,
+              'user_id' => $p->user_id,
+              'user' => $p->user ? ['id' => $p->user->id, 'name' => $p->user->name] : null,
+              'montant_par_defaut' => $p->montant_par_defaut,
+              'statut' => $p->statut,
+              'is_admin' => (bool) $p->is_admin,
+          ])->values();
+
+          $activeParticipants = $group->participants
+              ->filter(fn($p) => $p->statut === 'actif')
+              ->map(fn($p) => [
+                  'id' => $p->id,
+                  'user_id' => $p->user_id,
+                  'user' => $p->user ? ['id' => $p->user->id, 'name' => $p->user->name] : null,
+                  'statut' => $p->statut,
+              ])
+              ->values();
+
+          $userIsAdmin = false;
+          if ($authUser) {
+              $userIsAdmin = $group->created_by === $authUser->id
+                  || $group->participants->contains(fn($p) => $p->user_id === $authUser->id && (bool) $p->is_admin);
+          }
 
           return Inertia::render('Groups/Show', [
               'group' => [
@@ -127,20 +156,20 @@ class GroupController extends Controller
                   'description' => $group->description,
                   'periodicity' => $group->periodicity,
                   'creator' => $group->creator ? ['id' => $group->creator->id, 'name' => $group->creator->name] : null,
-                  'participants' => $group->participants->map(fn($p) => [
-                      'id' => $p->id,
-                      'user' => $p->user ? ['id' => $p->user->id, 'name' => $p->user->name] : null,
-                      'montant_par_defaut' => $p->montant_par_defaut,
-                      'statut' => $p->statut,
-                      'is_admin' => (bool) $p->is_admin,
-                  ])->values(),
+                  'participants' => $participants,
+                  'activeParticipants' => $activeParticipants,
                   'cotisations' => $group->cotisations->map(fn($c) => [
                       'id' => $c->id,
                       'montant' => $c->montant,
                       'date_versement' => $c->date_versement,
                       // expose participant under `user` key for frontend compatibility
                       'user' => $c->participant ? ['id' => $c->participant->id, 'name' => $c->participant->name] : null,
+                      'participant_id' => $c->user_id,
                   ])->values(),
+                  'permissions' => [
+                      'can_add_cotisation' => $userIsAdmin,
+                      'can_invite' => $userIsAdmin,
+                  ],
               ],
           ]);
       }
@@ -148,23 +177,47 @@ class GroupController extends Controller
     // Store a new cotisation for a group
     public function storeCotisation(Request $request, Group $group)
     {
-        $this->authorize('update', $group);
+        $this->authorize('view', $group);
 
-        $request->validate([
-            'montant' => 'required|numeric',
-            'date_versement' => 'nullable|date',
-            
+        $user = $request->user();
+
+        $isAdmin = $user && (
+            $group->created_by === $user->id ||
+            GroupParticipant::where('group_id', $group->id)
+                ->where('user_id', $user->id)
+                ->where('is_admin', true)
+                ->exists()
+        );
+
+        abort_unless($isAdmin, 403);
+
+        $validated = $request->validate([
+            'participant_id' => [
+                'required',
+                'integer',
+                Rule::exists('group_participants', 'id')
+                    ->where(fn($query) => $query->where('group_id', $group->id)->where('statut', 'actif')),
+            ],
+            'montant' => ['required', 'numeric', 'min:0.01'],
+            'date_versement' => ['required', 'date'],
         ]);
 
-        $cot = \App\Models\Cotisation::create([
+        $participant = GroupParticipant::with('user')
+            ->where('group_id', $group->id)
+            ->findOrFail($validated['participant_id']);
+
+        Cotisation::create([
             'group_id' => $group->id,
-            'user_id' => \Illuminate\Support\Facades\Auth::id(),
-            'montant' => $request->montant,
-            'date_versement' => $request->date_versement,
-            'created_by' => \Illuminate\Support\Facades\Auth::id(),
+            'user_id' => $participant->user_id,
+            'montant' => $validated['montant'],
+            'date_versement' => $validated['date_versement'],
+            'created_by' => $user->id,
         ]);
 
-        return response()->json(['message' => 'Cotisation créée.', 'cotisation' => $cot]);
+        return redirect()
+            ->route('groups.show', $group->id)
+            ->with('success', 'Cotisation enregistrée avec succès.')
+            ->setStatusCode(303);
     }
   
       // 🛠️ Formulaire de modification (si utilisé)

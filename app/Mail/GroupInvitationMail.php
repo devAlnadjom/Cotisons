@@ -2,8 +2,7 @@
 
 namespace App\Mail;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
+use App\Models\Invitation;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
@@ -11,45 +10,35 @@ use Illuminate\Queue\SerializesModels;
 
 class GroupInvitationMail extends Mailable
 {
-    use Queueable, SerializesModels;
+    use SerializesModels;
 
-    /**
-     * Create a new message instance.
-     */
-    public function __construct(Public $invitation)
+    public function __construct(public Invitation $invitation)
     {
-        $this->invitation = $invitation;
     }
 
-    /**
-     * Get the message envelope.
-     */
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Group Invitation Mail',
+            subject: 'Invitation à rejoindre un groupe',
         );
     }
 
-    /**
-     * Get the message content definition.
-     */
     public function content(): Content
     {
         return new Content(
-            view: 'view.name',
+            markdown: 'emails.invitation',
+            with: [
+                'token' => $this->invitation->token,
+                'groupName' => optional($this->invitation->group)->name,
+            ],
         );
     }
 
     /**
-     * Get the attachments for the message.
-     *
      * @return array<int, \Illuminate\Mail\Mailables\Attachment>
      */
     public function attachments(): array
     {
         return [];
     }
-
-    
 }
