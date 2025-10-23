@@ -6,6 +6,7 @@ use App\Models\GroupParticipant;
 use App\Models\Invitation;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
@@ -39,36 +40,65 @@ class GroupInvitationController extends Controller
         // Envoie l'email
         Mail::to($email)->send(new \App\Mail\GroupInvitationMail($invitation));
 
-        return response()->json(['message' => 'Invitation envoyée.']);
+        return redirect()
+            ->route('groups.show', $groupId)
+            ->with('success', 'Invitation envoyée.');
     }
 
-    public function accept($token)
+    public function accept(Request $request, $token)
     {
-        $invitation = Invitation::where('token', $token)->firstOrFail();
+        $invitation = Invitation::with('group')->where('token', $token)->firstOrFail();
 
         if ($invitation->status === 'accepted') {
-            return redirect('/login')->with('message', 'Invitation déjà acceptée.');
+            $request->session()->flash('login_prefill_email', $invitation->email);
+
+            return redirect()
+                ->route('login')
+                ->with('warning', 'Invitation déjà acceptée.');
         }
 
-        // Vérifie si l'utilisateur existe
-        $user = User::where('email', $invitation->email)->first();
+        // Vérifie si l'utilisateur existe déjà
+        $userExists = User::where('email', $invitation->email)->exists();
 
-        if (!$user) {
-            // Redirige vers page d’inscription personnalisée
-            return redirect("/register?email={$invitation->email}&token={$token}");
+        if (!Auth::check()) {
+            $request->session()->flash('login_prefill_email', $invitation->email);
+            $request->session()->put('pending_invitation_token', $token);
+            $request->session()->put('after_login_redirect', route('groups.show', $invitation->group_id, absolute: false));
+
+            if (!$userExists) {
+                return redirect("/register?email={$invitation->email}&token={$token}");
+            }
+
+            return redirect()
+                ->route('login')
+                ->with('success', 'Connectez-vous pour rejoindre le groupe.');
         }
 
-        // Ajoute automatiquement le participant au groupe
-        GroupParticipant::create([
-            'group_id' => $invitation->group_id,
-            'user_id' => $user->id,
-            'montant_par_defaut' => 0,
-            'date_ajout' => now(),
-            'statut' => 'actif',
-        ]);
+        $user = $request->user();
+
+        if ($user->email !== $invitation->email) {
+            return redirect()
+                ->route('dashboard')
+                ->with('error', 'Cette invitation ne correspond pas à votre compte.');
+        }
+
+        GroupParticipant::firstOrCreate(
+            [
+                'group_id' => $invitation->group_id,
+                'user_id' => $user->id,
+            ],
+            [
+                'montant_par_defaut' => 0,
+                'date_ajout' => now()->toDateString(),
+                'statut' => 'actif',
+                'is_admin' => false,
+            ]
+        );
 
         $invitation->update(['status' => 'accepted']);
 
-        return redirect('/dashboard')->with('message', 'Vous avez rejoint le groupe.');
+        return redirect()
+            ->route('groups.show', $invitation->group_id)
+            ->with('success', 'Vous avez rejoint le groupe.');
     }
 }

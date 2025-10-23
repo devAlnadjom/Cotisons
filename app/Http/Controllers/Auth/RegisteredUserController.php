@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\HandlesPendingInvitation;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,12 +16,22 @@ use Inertia\Response;
 
 class RegisteredUserController extends Controller
 {
+    use HandlesPendingInvitation;
+
     /**
      * Show the registration page.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
-        return Inertia::render('auth/Register');
+        $prefillEmail = $request->session()->get('login_prefill_email');
+
+        if (!$prefillEmail) {
+            $prefillEmail = $request->query('email');
+        }
+
+        return Inertia::render('auth/Register', [
+            'prefillEmail' => $prefillEmail,
+        ]);
     }
 
     /**
@@ -46,6 +57,19 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return to_route('dashboard');
+        $joinedGroupId = $this->completePendingInvitation($request);
+        $redirectUrl = $request->session()->pull('after_login_redirect');
+
+        if ($joinedGroupId) {
+            $request->session()->flash('success', 'Invitation acceptée. Bienvenue dans le groupe !');
+
+            if ($redirectUrl) {
+                return redirect()->intended($redirectUrl);
+            }
+
+            return redirect()->intended(route('groups.show', ['group' => $joinedGroupId], absolute: false));
+        }
+
+        return redirect()->intended(route('dashboard', absolute: false));
     }
 }

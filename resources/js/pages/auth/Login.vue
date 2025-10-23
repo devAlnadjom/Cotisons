@@ -9,13 +9,14 @@ import AuthBase from '@/layouts/AuthLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { LoaderCircle } from 'lucide-vue-next';
 
-defineProps<{
+const props = defineProps<{
     status?: string;
     canResetPassword: boolean;
+    prefillEmail?: string | null;
 }>();
 
 const form = useForm({
-    email: '',
+    email: props.prefillEmail ?? '',
     password: '',
     remember: false,
 });
@@ -31,8 +32,8 @@ const submit = () => {
     <AuthBase title="Log in to your account" description="Enter your email and password below to log in">
         <Head title="Log in" />
 
-        <div v-if="status" class="mb-4 text-center text-sm font-medium text-green-600">
-            {{ status }}
+        <div v-if="props.status" class="mb-4 text-center text-sm font-medium text-green-600">
+            {{ props.status }}
         </div>
 
         <form @submit.prevent="submit" class="flex flex-col gap-6">
@@ -55,7 +56,7 @@ const submit = () => {
                 <div class="grid gap-2">
                     <div class="flex items-center justify-between">
                         <Label for="password">Password</Label>
-                        <TextLink v-if="canResetPassword" :href="route('password.request')" class="text-sm" :tabindex="5">
+                        <TextLink v-if="props.canResetPassword" :href="route('password.request')" class="text-sm" :tabindex="5">
                             Forgot password?
                         </TextLink>
                     </div>
