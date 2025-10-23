@@ -12,7 +12,11 @@ class Group extends Model
     use HasFactory;
     use SoftDeletes;
 
-    protected $fillable = ['name', 'description', 'created_by', 'periodicity'];
+    protected $fillable = ['name', 'description', 'created_by', 'periodicity', 'balance'];
+
+    protected $casts = [
+        'balance' => 'decimal:2',
+    ];
     
     protected $policies = [
         'update' => GroupPolicy::class
@@ -31,6 +35,11 @@ class Group extends Model
     public function cotisations()
     {
         return $this->hasMany(Cotisation::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
     }
 
     public function invitations()

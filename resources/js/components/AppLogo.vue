@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import { Sparkles } from 'lucide-vue-next'
 </script>
 
 <template>
-    <div class="flex aspect-square size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-        <AppLogoIcon class="size-5 fill-current text-white dark:text-black" />
-    </div>
-    <div class="ml-1 grid flex-1 text-left text-sm">
-        <span class="mb-0.5 truncate font-semibold leading-none">Laravel Starter Kit</span>
+    <div class="flex items-center gap-3">
+        <div class="flex aspect-square size-9 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-sky-500 text-white shadow-lg">
+            <Sparkles class="h-5 w-5" />
+        </div>
+        <div class="grid flex-1 text-left leading-tight">
+            <span class="truncate text-base font-semibold text-sidebar-foreground">CotizApp</span>
+            <span class="truncate text-xs text-sidebar-foreground/60">Simplifiez vos cotisations</span>
+        </div>
     </div>
 </template>

@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Cotisation;
 use App\Models\Group;
 use App\Models\GroupParticipant;
+use App\Models\Payment;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class GroupController extends Controller
@@ -33,6 +36,7 @@ class GroupController extends Controller
                   'periodicity' => $g->periodicity,
                   'participants_count' => $g->participants_count,
                   'last_cotisation_at' => optional($g->cotisations->first())->date_versement,
+                  'balance' => $g->balance,
               ]);
 
           // Groups the user joined (via groupParticipations)
@@ -94,6 +98,7 @@ class GroupController extends Controller
               'description' => $request->description,
               'periodicity' => $request->periodicity,
               'created_by' => Auth::id(),
+              'balance' => 0,
           ]);
   
           GroupParticipant::create([
@@ -109,6 +114,45 @@ class GroupController extends Controller
           return redirect()->route('groups.show', $group->id)->with('success', 'Groupe créé.')->setStatusCode(303);
       }
 
+      public function list(Request $request)
+      {
+          $user = $request->user();
+
+          $created = Group::withCount('participants')
+              ->with(['cotisations' => fn($q) => $q->latest('date_versement')->limit(1)])
+              ->where('created_by', $user->id)
+              ->orderBy('name')
+              ->get()
+              ->map(fn($group) => [
+                  'id' => $group->id,
+                  'name' => $group->name,
+                  'description' => $group->description,
+                  'periodicity' => $group->periodicity,
+                  'participants_count' => $group->participants_count,
+                  'last_cotisation_at' => optional($group->cotisations->first())->date_versement,
+                  'balance' => $group->balance,
+              ]);
+
+          $joined = Group::withCount('participants')
+              ->whereHas('participants', fn($q) => $q->where('user_id', $user->id))
+              ->where('created_by', '!=', $user->id)
+              ->orderBy('name')
+              ->get()
+              ->map(fn($group) => [
+                  'id' => $group->id,
+                  'name' => $group->name,
+                  'description' => $group->description,
+                  'periodicity' => $group->periodicity,
+                  'participants_count' => $group->participants_count,
+                  'balance' => $group->balance,
+              ]);
+
+          return Inertia::render('Groups/List', [
+              'created' => $created,
+              'joined' => $joined,
+          ]);
+      }
+
       // Affiche la page de détail d'un groupe
       public function show(Group $group)
       {
@@ -119,6 +163,9 @@ class GroupController extends Controller
               'participants.user:id,name',
               'cotisations' => function($q) {
                   $q->with('participant:id,name')->orderByDesc('date_versement')->take(20);
+              },
+              'payments' => function($q) {
+                  $q->with(['recipient:id,name', 'author:id,name'])->orderByDesc('date_paiement')->orderByDesc('created_at')->take(20);
               },
           ]);
 
@@ -156,8 +203,18 @@ class GroupController extends Controller
                   'description' => $group->description,
                   'periodicity' => $group->periodicity,
                   'creator' => $group->creator ? ['id' => $group->creator->id, 'name' => $group->creator->name] : null,
+                  'balance' => $group->balance,
                   'participants' => $participants,
                   'activeParticipants' => $activeParticipants,
+                  'payments' => $group->payments->map(fn($payment) => [
+                      'id' => $payment->id,
+                      'montant' => $payment->montant,
+                      'date_paiement' => $payment->date_paiement,
+                      'motif' => $payment->motif,
+                      'recipient' => $payment->recipient ? ['id' => $payment->recipient->id, 'name' => $payment->recipient->name] : null,
+                      'participant_id' => $payment->group_participant_id,
+                      'author' => $payment->author ? ['id' => $payment->author->id, 'name' => $payment->author->name] : null,
+                  ])->values(),
                   'cotisations' => $group->cotisations->map(fn($c) => [
                       'id' => $c->id,
                       'montant' => $c->montant,
@@ -206,17 +263,79 @@ class GroupController extends Controller
             ->where('group_id', $group->id)
             ->findOrFail($validated['participant_id']);
 
-        Cotisation::create([
-            'group_id' => $group->id,
-            'user_id' => $participant->user_id,
-            'montant' => $validated['montant'],
-            'date_versement' => $validated['date_versement'],
-            'created_by' => $user->id,
-        ]);
+        DB::transaction(function () use ($group, $participant, $validated, $user) {
+            Cotisation::create([
+                'group_id' => $group->id,
+                'user_id' => $participant->user_id,
+                'montant' => $validated['montant'],
+                'date_versement' => $validated['date_versement'],
+                'created_by' => $user->id,
+            ]);
+
+            $group->increment('balance', $validated['montant']);
+        });
 
         return redirect()
             ->route('groups.show', $group->id)
             ->with('success', 'Cotisation enregistrée avec succès.')
+            ->setStatusCode(303);
+    }
+
+    public function storePayment(Request $request, Group $group)
+    {
+        $this->authorize('view', $group);
+
+        $user = $request->user();
+
+        $isAdmin = $user && (
+            $group->created_by === $user->id ||
+            GroupParticipant::where('group_id', $group->id)
+                ->where('user_id', $user->id)
+                ->where('is_admin', true)
+                ->exists()
+        );
+
+        abort_unless($isAdmin, 403);
+
+        $validated = $request->validate([
+            'participant_id' => [
+                'required',
+                'integer',
+                Rule::exists('group_participants', 'id')
+                    ->where(fn($query) => $query->where('group_id', $group->id)->where('statut', 'actif')),
+            ],
+            'montant' => ['required', 'numeric', 'min:0.01'],
+            'date_paiement' => ['required', 'date'],
+            'motif' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (floatval($validated['montant']) > floatval($group->balance)) {
+            throw ValidationException::withMessages([
+                'montant' => 'Le montant dépasse le solde du groupe.',
+            ]);
+        }
+
+        $participant = GroupParticipant::with('user')
+            ->where('group_id', $group->id)
+            ->findOrFail($validated['participant_id']);
+
+        DB::transaction(function () use ($group, $participant, $validated, $user) {
+            Payment::create([
+                'group_id' => $group->id,
+                'user_id' => $participant->user_id,
+                'group_participant_id' => $participant->id,
+                'montant' => $validated['montant'],
+                'date_paiement' => $validated['date_paiement'],
+                'motif' => $validated['motif'] ?? null,
+                'created_by' => $user->id,
+            ]);
+
+            $group->decrement('balance', $validated['montant']);
+        });
+
+        return redirect()
+            ->route('groups.show', $group->id)
+            ->with('success', 'Paiement enregistré et solde mis à jour.')
             ->setStatusCode(303);
     }
   

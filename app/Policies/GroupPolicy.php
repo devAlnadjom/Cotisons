@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\Group;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class GroupPolicy
 {
@@ -21,7 +20,8 @@ class GroupPolicy
      */
     public function view(User $user, Group $group): bool
     {
-        return true;
+        return $this->ownsGroup($user, $group)
+            || $group->participants()->where('user_id', $user->id)->exists();
     }
 
     /**
@@ -37,7 +37,11 @@ class GroupPolicy
      */
     public function update(User $user, Group $group): bool
     {
-        return $group->created_by === $user->id;
+        return $this->ownsGroup($user, $group)
+            || $group->participants()
+                ->where('user_id', $user->id)
+                ->where('is_admin', true)
+                ->exists();
     }
 
     /**
@@ -45,7 +49,7 @@ class GroupPolicy
      */
     public function delete(User $user, Group $group): bool
     {
-        return true;
+        return $this->ownsGroup($user, $group);
     }
 
     /**
@@ -53,7 +57,7 @@ class GroupPolicy
      */
     public function restore(User $user, Group $group): bool
     {
-        return true;
+        return $this->ownsGroup($user, $group);
     }
 
     /**
@@ -61,6 +65,11 @@ class GroupPolicy
      */
     public function forceDelete(User $user, Group $group): bool
     {
-        return true;
+        return $this->ownsGroup($user, $group);
+    }
+
+    protected function ownsGroup(User $user, Group $group): bool
+    {
+        return $group->created_by === $user->id;
     }
 }

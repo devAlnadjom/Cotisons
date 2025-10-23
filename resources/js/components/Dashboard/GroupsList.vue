@@ -8,6 +8,7 @@ type Group = {
   participants_count?: number
   members_count?: number
   participants?: unknown[]
+  balance?: number | string | null
 }
 
 const props = withDefaults(
@@ -23,6 +24,12 @@ const participantCount = (group: Group) =>
     group.participants_count ??
     group.members_count ??
     (Array.isArray(group.participants) ? group.participants.length : 0)
+
+const formatCurrency = (value?: number | string | null) => {
+    if (value === null || value === undefined || value === '') return '—'
+    const amount = Number(value) || 0
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount)
+}
 </script>
 
 <template>
@@ -48,17 +55,20 @@ const participantCount = (group: Group) =>
                         Voir
                     </span>
                 </div>
-                <div class="mt-4 flex items-center justify-between text-sm">
-                    <span class="font-medium text-slate-600 dark:text-slate-300">
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <div class="font-medium text-slate-600 dark:text-slate-300">
                         {{ participantCount(group) }} participant<span v-if="participantCount(group) > 1">s</span>
-                    </span>
-                    <span class="inline-flex items-center gap-1 text-blue-600 transition group-hover:gap-2 dark:text-blue-300">
-                        <span>Découvrir</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </span>
+                    </div>
+                    <div class="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                        Solde {{ formatCurrency(group.balance) }}
+                    </div>
                 </div>
+                <span class="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 transition group-hover:gap-2 dark:text-blue-300">
+                    <span>Découvrir</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5l7 7-7 7" />
+                    </svg>
+                </span>
             </Link>
         </li>
     </ul>

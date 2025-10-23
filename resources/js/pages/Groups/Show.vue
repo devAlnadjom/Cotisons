@@ -24,6 +24,16 @@ type CotisationShape = {
     participant_id?: number | string | null
 }
 
+type PaymentShape = {
+    id: number | string
+    montant: number | string
+    date_paiement?: string | null
+    motif?: string | null
+    recipient?: { id: number | string; name: string } | null
+    participant_id?: number | string | null
+    author?: { id: number | string; name: string } | null
+}
+
 type GroupPermissions = {
     can_add_cotisation?: boolean
     can_invite?: boolean
@@ -38,7 +48,9 @@ interface GroupShape {
     participants?: Participant[]
     activeParticipants?: Participant[]
     cotisations?: CotisationShape[]
+    payments?: PaymentShape[]
     permissions?: GroupPermissions
+    balance?: number | string | null
 }
 
 const page = usePage<SharedData & { group: GroupShape }>()
@@ -54,6 +66,15 @@ function formatAmount(value: number | string | null) {
     if (value === null || value === undefined || value === '') return '—'
     const num = Number(value) || 0
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(num)
+}
+
+function formatDate(date?: string | null) {
+    if (!date) return 'En attente'
+    return new Intl.DateTimeFormat('fr-FR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    }).format(new Date(date))
 }
 
 const periodicityLabel = computed(() => {
@@ -85,6 +106,12 @@ const cotisationsCount = computed(() => cotisations.value.length)
 const lastCotisationAt = computed(() =>
     cotisations.value.length ? cotisations.value[0].date_versement ?? 'En attente' : '—',
 )
+const payments = computed<PaymentShape[]>(() => group.value.payments ?? [])
+const totalPaid = computed(() =>
+    payments.value.reduce((sum, payment) => sum + (Number(payment.montant) || 0), 0),
+)
+const totalPaidFormatted = computed(() => formatAmount(totalPaid.value))
+const balanceFormatted = computed(() => formatAmount(group.value.balance ?? 0))
 
 const permissions = computed<GroupPermissions>(() => group.value.permissions ?? {})
 const canInvite = computed(() => permissions.value.can_invite ?? false)
@@ -114,6 +141,14 @@ const cotisationForm = useForm({
     date_versement: '',
 })
 
+const showPaymentModal = ref(false)
+const paymentForm = useForm({
+    participant_id: '',
+    montant: '',
+    date_paiement: '',
+    motif: '',
+})
+
 const openCotisation = () => {
     if (!canAddCotisation.value) return
     cotisationForm.reset()
@@ -129,6 +164,25 @@ const submitCotisation = () => {
         preserveScroll: true,
         onSuccess: () => {
             showCotisationModal.value = false
+        },
+    })
+}
+
+const openPayment = () => {
+    if (!canAddCotisation.value) return
+    paymentForm.reset()
+    if (activeParticipants.value.length) {
+        paymentForm.participant_id = String(activeParticipants.value[0].id)
+    }
+    paymentForm.date_paiement = new Date().toISOString().slice(0, 10)
+    showPaymentModal.value = true
+}
+
+const submitPayment = () => {
+    paymentForm.post(route('groups.payments.store', group.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showPaymentModal.value = false
         },
     })
 }
@@ -164,6 +218,9 @@ function initials(name: string | undefined | null) {
                             <span v-if="group.creator" class="rounded-full border border-white/20 px-3 py-1 text-white/80">
                                 Créé par {{ group.creator.name }}
                             </span>
+                            <span class="rounded-full border border-white/20 px-3 py-1 text-white">
+                                Solde {{ balanceFormatted }}
+                            </span>
                         </div>
                     </div>
                     <div v-if="canInvite || canAddCotisation" class="flex flex-col items-start gap-3 sm:flex-row">
@@ -183,6 +240,15 @@ function initials(name: string | undefined | null) {
                         >
                             Ajouter une cotisation
                         </Button>
+                        <Button
+                            v-if="canAddCotisation"
+                            variant="outline"
+                            class="rounded-full border border-white/60 px-6 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/20"
+                            :disabled="!hasActiveParticipants"
+                            @click="openPayment"
+                        >
+                            Enregistrer un paiement
+                        </Button>
                     </div>
                 </div>
             </section>
@@ -192,10 +258,11 @@ function initials(name: string | undefined | null) {
                     <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Aperçu du groupe</h2>
                     <span class="text-sm text-slate-500 dark:text-slate-400">Suivi des membres et des contributions</span>
                 </div>
-                <div class="mt-4 grid gap-4 md:grid-cols-3">
+                <div class="mt-4 grid gap-4 md:grid-cols-4">
+                    <SummaryCard title="Solde actuel" :value="balanceFormatted" subtitle="Montant disponible" />
                     <SummaryCard title="Participants" :value="participantsCount" subtitle="Membres inscrits" />
                     <SummaryCard title="Cotisations" :value="cotisationsCount" subtitle="Cotisations enregistrées" />
-                    <SummaryCard title="Dernière contribution" :value="lastCotisationAt" subtitle="Date de la dernière entrée" />
+                    <SummaryCard title="Paiements effectués" :value="totalPaidFormatted" subtitle="Montant versé aux membres" />
                 </div>
             </section>
 
@@ -253,6 +320,48 @@ function initials(name: string | undefined | null) {
                     </section>
 
                     <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <h3 class="text-xl font-semibold text-slate-900 dark:text-white">Paiements enregistrés</h3>
+                        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            Historique des montants versés aux membres du groupe.
+                        </p>
+
+                        <div class="mt-6">
+                            <ul v-if="payments.length" class="space-y-3">
+                                <li
+                                    v-for="payment in payments"
+                                    :key="payment.id"
+                                    class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/60"
+                                >
+                                    <div class="flex flex-wrap items-start justify-between gap-4">
+                                        <div>
+                                            <p class="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                                                {{ formatAmount(payment.montant) }}
+                                            </p>
+                                            <p class="text-xs text-slate-500 dark:text-slate-400">
+                                                Versé le {{ payment.date_paiement ? formatDate(payment.date_paiement) : 'Date non renseignée' }}
+                                            </p>
+                                        </div>
+                                        <div class="rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-xs font-medium uppercase tracking-wide text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+                                            Paiement
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500 dark:text-slate-400">
+                                        <span>Destinataire : {{ payment.recipient?.name ?? '—' }}</span>
+                                        <span v-if="payment.motif" class="italic">{{ payment.motif }}</span>
+                                        <span class="font-medium text-slate-700 dark:text-slate-200">Par {{ payment.author?.name ?? '—' }}</span>
+                                    </div>
+                                </li>
+                            </ul>
+                            <div
+                                v-else
+                                class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/40"
+                            >
+                                Aucun paiement enregistré pour le moment.
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         <h3 class="text-xl font-semibold text-slate-900 dark:text-white">Informations supplémentaires</h3>
                         <dl class="mt-4 space-y-4 text-sm text-slate-600 dark:text-slate-300">
                             <div class="flex items-start justify-between gap-4">
@@ -262,6 +371,10 @@ function initials(name: string | undefined | null) {
                             <div class="flex items-start justify-between gap-4">
                                 <dt class="font-semibold text-slate-700 dark:text-slate-200">Périodicité</dt>
                                 <dd>{{ periodicityLabel }}</dd>
+                            </div>
+                            <div class="flex items-start justify-between gap-4">
+                                <dt class="font-semibold text-slate-700 dark:text-slate-200">Solde actuel</dt>
+                                <dd>{{ balanceFormatted }}</dd>
                             </div>
                             <div v-if="group.creator" class="flex items-start justify-between gap-4">
                                 <dt class="font-semibold text-slate-700 dark:text-slate-200">Responsable</dt>
@@ -400,6 +513,71 @@ function initials(name: string | undefined | null) {
                 <div class="mt-6 flex justify-end gap-3">
                     <Button variant="ghost" class="rounded-full px-4" @click="showCotisationModal = false">Annuler</Button>
                     <Button class="rounded-full px-5" :disabled="cotisationForm.processing" @click="submitCotisation">Créer</Button>
+                </div>
+            </div>
+        </div>
+    </transition>
+
+    <transition name="fade">
+        <div v-if="showPaymentModal" class="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 backdrop-blur">
+            <div class="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Enregistrer un paiement</h3>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Déduisez un montant du solde pour un membre du groupe.</p>
+
+                <div class="mt-5 space-y-2">
+                    <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Destinataire</label>
+                    <select
+                        v-model="paymentForm.participant_id"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-sm text-slate-700 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
+                        :disabled="!hasActiveParticipants"
+                    >
+                        <option value="" disabled>Sélectionnez un participant actif</option>
+                        <option
+                            v-for="participant in activeParticipants"
+                            :key="participant.id"
+                            :value="participant.id"
+                        >
+                            {{ participant.user?.name ?? '—' }}
+                        </option>
+                    </select>
+                    <p v-if="paymentForm.errors.participant_id" class="text-xs text-red-500">{{ paymentForm.errors.participant_id }}</p>
+                </div>
+
+                <div class="mt-5 space-y-2">
+                    <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Montant</label>
+                    <input
+                        v-model="paymentForm.montant"
+                        type="number"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-sm text-slate-700 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
+                        placeholder="50.00"
+                    />
+                    <p v-if="paymentForm.errors.montant" class="text-xs text-red-500">{{ paymentForm.errors.montant }}</p>
+                </div>
+
+                <div class="mt-4 space-y-2">
+                    <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Date de paiement</label>
+                    <input
+                        v-model="paymentForm.date_paiement"
+                        type="date"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-sm text-slate-700 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
+                    />
+                    <p v-if="paymentForm.errors.date_paiement" class="text-xs text-red-500">{{ paymentForm.errors.date_paiement }}</p>
+                </div>
+
+                <div class="mt-4 space-y-2">
+                    <label class="text-sm font-medium text-slate-600 dark:text-slate-300">Motif (optionnel)</label>
+                    <input
+                        v-model="paymentForm.motif"
+                        type="text"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-sm text-slate-700 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
+                        placeholder="Raison du paiement"
+                    />
+                    <p v-if="paymentForm.errors.motif" class="text-xs text-red-500">{{ paymentForm.errors.motif }}</p>
+                </div>
+
+                <div class="mt-6 flex justify-end gap-3">
+                    <Button variant="ghost" class="rounded-full px-4" @click="showPaymentModal = false">Annuler</Button>
+                    <Button class="rounded-full px-5" :disabled="paymentForm.processing" @click="submitPayment">Confirmer</Button>
                 </div>
             </div>
         </div>

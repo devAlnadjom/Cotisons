@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\CotisationController;
 use App\Http\Controllers\GroupController;
 use App\Http\Controllers\GroupInvitationController;
+use App\Http\Controllers\PaymentController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -36,7 +38,13 @@ Route::middleware('auth')->group(function () {
     // Ajouter une cotisation pour un groupe
     Route::post('/groups/{group}/cotisations', [GroupController::class, 'storeCotisation'])
         ->name('groups.cotisations.store');
-    
+    Route::post('/groups/{group}/payments', [GroupController::class, 'storePayment'])
+        ->name('groups.payments.store');
+
+    Route::get('groups/list', [GroupController::class, 'list'])->name('groups.list');
+    Route::get('cotisations', [CotisationController::class, 'index'])->name('cotisations.index');
+    Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
+
     Route::resource('groups', GroupController::class);
 });
 
