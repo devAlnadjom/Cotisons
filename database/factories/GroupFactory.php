@@ -19,6 +19,7 @@ class GroupFactory extends Factory
             'description' => $this->faker->sentence(6),
             'periodicity' => $this->faker->randomElement(['monthly','weekly','bi-weekly','custom']),
             'created_by' => null,
+            'balance' => 0,
         ];
     }
 }
